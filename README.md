@@ -1,2 +1,2 @@
 # machine-learning-project
-labs for machine learning cource
+### Инструкция к проекту (как запустить/использовать/структура проекта)
