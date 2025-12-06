@@ -1,3 +1,6 @@
 /data/*
+/venv/*
 /models/*
 **/.ipynb_checkpoints/*
+/notebooks/encoders/*
+**/*.ipynb
