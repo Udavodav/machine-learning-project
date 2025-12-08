@@ -1,4 +1,6 @@
 /data/*
+/venv/*
 /models/*
 **/.ipynb_checkpoints/*
-/.kaggle/*
+/notebooks/encoders/*
+
