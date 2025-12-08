@@ -41,6 +41,22 @@ if duplicates > 0:
 # Удаляем customerID (неинформативный признак)
 df = df.drop('customerID', axis=1)
 
+
+# Добавление новых признаков
+# ЦЕННОСТЬ КЛИЕНТА (Customer Lifetime Value) Средний доход в месяц
+df['CLV'] = df['TotalCharges'] / df['tenure']
+
+# РИСКОВЫЙ СКОР 
+df['RiskScore'] = df['MonthlyCharges'] / df['tenure']
+
+# ПЛОТНОСТЬ УСЛУГ
+services = ['PhoneService', 'MultipleLines', 'InternetService', 
+            'OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 
+            'TechSupport', 'StreamingTV', 'StreamingMovies']
+df['TotalServices'] = df[services].apply(lambda x: (x == 'Yes').sum(), axis=1)
+df['ServiceDensity'] = df['TotalServices'] / df['tenure']
+
+
 # Кодируем категориальные переменные
 print("\n Кодирование категориальных переменных")
 
@@ -80,7 +96,7 @@ joblib.dump(ohe, 'encoders/onehot_encoder.pkl')
 
 
 # Нормализация числовых признаков
-numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges', 'CLV', 'RiskScore', 'TotalServices', 'ServiceDensity']
 scaler = StandardScaler()
 df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
 
