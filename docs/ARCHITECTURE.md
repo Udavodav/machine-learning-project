@@ -4,15 +4,7 @@
 
 ## 1. Общая схема пайплайна
 
-mermaid
-graph TD
-    A[Data Ingestion: Загрузка данных из CSV / БД] --> B[Preprocessing: Очистка и подготовка]
-    B --> C[Feature Engineering: Создание новых признаков, кодирование]
-    C --> D[Data Split: Разделение на train, validation, test]
-    D --> E[Model Training: Обучение модели]
-    E --> F[Validation & Hyperparameter Tuning]
-    F --> G[Model Evaluation: Оценка метрик и интерпретация]
-    G --> H[Inference: Предсказание для новых данных]
+![схема](images/grafik1.jpg)
 
 ## 2. Компоненты пайплайна
 
@@ -57,18 +49,18 @@ graph TD
 ## 4. Структура репозитория
 ```
 /project
-├── data/           # Исходные данные и подготовленные датасеты
-├── notebooks/      # Jupyter-ноутбуки для экспериментов
-├── src/            # основной код пайплайна
-│   ├── data/       # загрузка и обработка данных
-│   ├── features/   # функции для создания признаков
-│   ├── models/     # обучение, сохранение, загрузка моделей
-│   └── evaluate/   # метрики и интерпретация
-├── models/         # сохраненные обученные модели
-├── configs/        # конфигурационные файлы и гиперпараметры
-├── experiments/    # логирование и результаты экспериментов
-├── tests/          # тесты для репликации и проверки кода
-├── requirements.txt, Dockerfile, environment.yml
+├── data/
+│   ├── processed/  # Обработанные данные
+│   └── raw_data/   # Исходные данные
+├── docs/           # Документация
+│   └── images/     # Изображения для документации
+├── models /        # Модели
+├── notebooks/      # Jupyter-ноутбуки и .py-файлы с кодом 
+│   ├── encoders/   # Содержит словарь расшифровки данных
+│   └── pckgs/      # Самописные функции
+├── plots /         # графики
+├── tests /         # Тесты
+├── requirements.txt
 └── README.md
 ```
 
