@@ -118,20 +118,30 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 # Анализ дисбаланса в тренировочной выборке
 print("\nАнализ дисбаланса в тренировочной выборке:")
-print("До балансировки:")
+print("\nДо балансировки:")
 print(f"   Класс 0: {(y_train == 0).sum()} клиентов")
 print(f"   Класс 1: {(y_train == 1).sum()} клиентов")
 print(f"   Соотношение (1/0): {(y_train == 1).sum() / (y_train == 0).sum():.2f}")
 
-# Балансировка тренировочной выборки с помощью SMOTE
+# Балансировка тренировочной выборки с помощью SMOTE (50/50)
 smote = SMOTE(random_state=42)
 X_train_balanced, y_train_balanced = smote.fit_resample(X_train, y_train)
 
-print("После SMOTE:")
+# Балансировка тренировочной выборки с помощью SMOTE (0.7)
+smote = SMOTE(sampling_strategy=0.7, random_state=42)
+X_train_balanced_medium, y_train_balanced_medium = smote.fit_resample(X_train, y_train)
+
+print("\nПосле SMOTE  (medium):")
+print(f"   Класс 0: {(y_train_balanced_medium == 0).sum()} клиентов")
+print(f"   Класс 1: {(y_train_balanced_medium == 1).sum()} клиентов")
+print(f"   Соотношение (1/0): {(y_train_balanced_medium == 1).sum() / (y_train_balanced_medium == 0).sum():.2f}")
+print(f"   Добавлено искусственных примеров класса: {(y_train_balanced_medium == 1).sum() - (y_train == 1).sum()}")
+
+print("\nПосле SMOTE:")
 print(f"   Класс 0: {(y_train_balanced == 0).sum()} клиентов")
 print(f"   Класс 1: {(y_train_balanced == 1).sum()} клиентов")
 print(f"   Соотношение (1/0): {(y_train_balanced == 1).sum() / (y_train_balanced == 0).sum():.2f}")
-print(f"   Добавлено искусственных примеров класса 1: {(y_train_balanced == 1).sum() - (y_train == 1).sum()}")
+print(f"   Добавлено искусственных примеров класса: {(y_train_balanced == 1).sum() - (y_train == 1).sum()}")
 
 
 # Сохраняем обработанные данные
@@ -143,6 +153,7 @@ pd.concat([X_train, y_train], axis=1).to_csv(f'{PROCESSED_DIR}/train_unbalanced.
 
 # Сохраняем сбалансированные тренировочные данные
 pd.concat([X_train_balanced, y_train_balanced], axis=1).to_csv(f'{PROCESSED_DIR}/train_balanced.csv', index=False)
+pd.concat([X_train_balanced_medium, y_train_balanced_medium], axis=1).to_csv(f'{PROCESSED_DIR}/train_balanced_medium.csv', index=False)
 
 # Сохраняем тестовые данные (НЕ балансируем!)
 pd.concat([X_test, y_test], axis=1).to_csv(f'{PROCESSED_DIR}/test.csv', index=False)
