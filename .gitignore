@@ -1,4 +1,9 @@
 /data/*
+!/data/raw_data/
+/data/raw_data/*
+!/data/raw_data/WA_Fn-UseC_-Telco-Customer-Churn.csv
+
+/models/*
 /venv/*
 /models/*
 **/.ipynb_checkpoints/*
