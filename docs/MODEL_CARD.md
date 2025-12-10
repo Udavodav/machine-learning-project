@@ -41,15 +41,23 @@
 
 ---
 
-**Uрафик ROC-кривой модели:**
-[images/ROC -кривая модели.png]
+**График ROC-кривой модели:**
+
+<img src="images/ROC -кривая модели.png" alt="ROC-кривая модели" width="600">
+
 **Топ-10 важных признаков по SHAP/feature importance:**
-[images\Топ-10 признаков.png]
+
+<img src="images\Топ-10 признаков.png" alt="ROC-кривая модели" width="600">
+
 **Общая важность признаков:**
-[images\Важность признаков.png]
+
+<img src="images\Важность признаков.png" alt="ROC-кривая модели" width="600">
+
 **Анализа влияния ключевых признаков:**
-[images\Влияние признака RiskScore.png]
-[images\Влияние признака InternetService_Fiber optic.png]
+
+<img src="images\Влияние признака RiskScore.png" alt="ROC-кривая модели" width="600">
+<img src="images\Влияние признака InternetService_Fiber optic.png" alt="ROC-кривая модели" width="600">
+
 ---
 
 ## Метрики и trade-off-аналитика
