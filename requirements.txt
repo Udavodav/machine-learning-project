@@ -6,6 +6,7 @@ matplotlib==3.10.7
 numpy==1.26.4
 optuna==4.6.0
 pandas==2.3.3
+pytest==9.0.2
 scikit-learn==1.7.2
 seaborn==0.13.0
 shap==0.44.1
