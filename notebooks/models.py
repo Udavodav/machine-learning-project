@@ -11,6 +11,9 @@ from sklearn.metrics import (roc_auc_score, f1_score, precision_score, recall_sc
 from sklearn.calibration import CalibratedClassifierCV
 import optuna
 from optuna.samplers import TPESampler
+import lightgbm as lgb
+from catboost import CatBoostClassifier
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -22,7 +25,7 @@ from notebooks.pckgs.analyze import *
 # Константы
 RANDOM_STATE = 42
 N_FOLDS = 5
-SCORING = 'roc_auc'
+SCORING = 'average_precision'
 
 optuna.logging.set_verbosity(optuna.logging.WARNING) 
 
@@ -46,7 +49,7 @@ def randForestOpt(trial, X_train, y_train):
         X_train,
         y_train,
         cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
-        scoring='roc_auc',
+        scoring=SCORING,
         n_jobs=-1
     )
     
@@ -71,11 +74,71 @@ def gradOpt(trial, X_train, y_train):
         X_train,
         y_train,
         cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
-        scoring='roc_auc',
+        scoring=SCORING,
         n_jobs=-1
     )
     
     return cv_scores.mean()
+
+
+def lightgbmOpt(trial, X_train, y_train):
+    """функция для оптимизации LightGBM"""
+    params = {
+        'n_estimators': trial.suggest_int('n_estimators', 100, 500),
+        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+        'num_leaves': trial.suggest_int('num_leaves', 20, 150),
+        'max_depth': trial.suggest_int('max_depth', 3, 12),
+        'min_child_samples': trial.suggest_int('min_child_samples', 10, 100),
+        'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
+        'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 1.0, log=True),
+        'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 1.0, log=True),
+        'random_state': RANDOM_STATE,
+        'n_jobs': 10,
+        'verbose': -1,  # отключаем логи
+        'is_unbalance': True  # для дисбаланса
+    }
+    
+    model = lgb.LGBMClassifier(**params)
+    
+    cv_scores = cross_val_score(
+        model, 
+        X_train,
+        y_train,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        scoring=SCORING,
+        n_jobs=10
+    )
+    
+    return cv_scores.mean()
+
+def catboostOpt(trial, X_train, y_train):
+    """функция для оптимизации CatBoost"""
+    params = {
+        'iterations': trial.suggest_int('iterations', 100, 500),
+        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+        'depth': trial.suggest_int('depth', 4, 10),
+        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+        'random_strength': trial.suggest_float('random_strength', 1e-8, 1.0, log=True),
+        'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 1.0),
+        'random_seed': RANDOM_STATE,
+        'verbose': False,  # отключаем логи
+        'auto_class_weights': 'Balanced'  # для дисбаланса
+    }
+    
+    model = CatBoostClassifier(**params)
+    
+    cv_scores = cross_val_score(
+        model, 
+        X_train,
+        y_train,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        scoring=SCORING,
+        n_jobs=1
+    )
+    
+    return cv_scores.mean()
+
 
 # =========== ФУНКЦИИ ДЛЯ ЗАГРУЗКИ ДАННЫХ ===========
 def load_data(type_data='balanced', train_path=None, test_path=None):
@@ -115,7 +178,7 @@ def optimize_hyperparameters(X_train, y_train, optimize_func, n_trials=50):
     
     return study_rf.best_params
 
-def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_strategy=None, scoring='roc_auc'):
+def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_strategy=None, scoring=SCORING):
     """Обучение и оценка нескольких моделей"""
     if cv_strategy is None:
         cv_strategy = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
@@ -123,6 +186,7 @@ def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_
     results = []
     
     for model_name, model in models_dict.items():
+        
         print(f"\n{model_name.upper()}")
         print("-" * 40)
         
@@ -134,8 +198,8 @@ def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_
             scoring=scoring,
             n_jobs=-1
         )
-        print(f"   ROC-AUC на каждом фолде: {cv_scores}")
-        print(f"   Средний ROC-AUC: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
+        print(f"   PR-AUC на каждом фолде: {cv_scores}")
+        print(f"   Средний PR-AUC: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
         
         # Обучение модели
         model.fit(X_train, y_train)
@@ -173,8 +237,8 @@ def calculate_metrics(model_name, y_true, y_pred, y_proba, cv_scores=None):
     }
     
     if cv_scores is not None:
-        metrics['cv_roc_auc_mean'] = cv_scores.mean()
-        metrics['cv_roc_auc_std'] = cv_scores.std()
+        metrics['cv_pr_auc_mean'] = cv_scores.mean()
+        metrics['cv_pr_auc_std'] = cv_scores.std()
     
     return metrics
 
@@ -240,7 +304,7 @@ def calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test):
     print(calibration_results.to_string(index=False))
     
     # Выбираем лучший калиброванный вариант
-    best_calibrated_idx = calibration_results['ROC-AUC'].idxmax()
+    best_calibrated_idx = calibration_results['PR-AUC'].idxmax()
     best_calibrated_model_name = calibration_results.loc[best_calibrated_idx, 'Model']
     
     if best_calibrated_model_name == 'Platt scaling':
@@ -293,7 +357,7 @@ def evaluate_ensemble(ensemble, X_train, y_train, X_test, y_test, ensemble_name)
         ensemble_proba
     )
     
-    print(f"\n📊 Результаты ансамбля {ensemble_name}:")
+    print(f"\n Результаты ансамбля {ensemble_name}:")
     print_metrics(metrics)
     
     return ensemble, metrics
@@ -328,35 +392,42 @@ def run_pipeline(type_data='balanced_medium'):
     print(f"  Train для обучения: {X_train.shape}")
     print(f"  Val для калибровки: {X_val.shape}")
     
-    # Оптимизация гиперпараметров
-    forest_params = optimize_hyperparameters(X_train_bal, y_train_bal, randForestOpt)
-    grad_params = optimize_hyperparameters(X_train_bal, y_train_bal, gradOpt)
+    print("\nОптимизация RandomForest...")
+    forest_params = optimize_hyperparameters(X_train_bal, y_train_bal, randForestOpt, 50)
     
-    # Создание моделей
+    print("\nОптимизация GradientBoosting...")
+    grad_params = optimize_hyperparameters(X_train_bal, y_train_bal, gradOpt, 50)
+    
+    print("\nОптимизация LightGBM...")
+    lgb_params = optimize_hyperparameters(X_train_bal, y_train_bal, lightgbmOpt, 30)
+    
+    print("\nОптимизация CatBoost...")
+    cat_params = optimize_hyperparameters(X_train_bal, y_train_bal, catboostOpt, 15)
+    
     models = {
         'Random Forest': RandomForestClassifier(
             **forest_params,
             random_state=RANDOM_STATE,
             n_jobs=-1
         ),
-        'Gradient Boosting': GradientBoostingClassifier(**grad_params, random_state=RANDOM_STATE)
+        'Gradient Boosting': GradientBoostingClassifier(**grad_params, random_state=RANDOM_STATE),
+        'LightGBM': lgb.LGBMClassifier(**lgb_params, verbose=-1, n_jobs=-1),
+        'CatBoost': CatBoostClassifier(**cat_params, verbose=False)
     }
     
-    # Обучение и оценка моделей
-    results_df, trained_models = train_and_evaluate_models(
-        models, X_train, y_train, X_test, y_test
-    )
+    results_df, trained_models = train_and_evaluate_models(models, X_train, y_train, X_test, y_test)
     
     # Выбор лучшей модели
-    best_model_info = results_df.loc[results_df['test_roc_auc'].idxmax()]
+    best_model_info = results_df.loc[results_df['test_pr_auc'].idxmax()]
     best_model_name = best_model_info['model']
     
-    print(f"\nЛучшая модель по ROC-AUC: {best_model_name}")
-    print(f"   ROC-AUC на тесте: {best_model_info['test_roc_auc']:.3f}")
-    print(f"   ROC-AUC на кросс-валидации: {best_model_info['cv_roc_auc_mean']:.3f}")
+    print(f"\nЛучшая модель по PR-AUC: {best_model_name}")
+    print(f"   PR-AUC на тесте: {best_model_info['test_pr_auc']:.3f}")
+    print(f"   PR-AUC на кросс-валидации: {best_model_info['cv_pr_auc_mean']:.3f}")
     
     # Калибровка лучшей модели
     print(f"\nКАЛИБРОВКА МОДЕЛИ {best_model_name}")
+    
     
     if best_model_name == 'Random Forest':
         base_model = RandomForestClassifier(
@@ -364,18 +435,21 @@ def run_pipeline(type_data='balanced_medium'):
             random_state=RANDOM_STATE,
             n_jobs=-1
         )
-    else:
+    elif best_model_name == 'Gradient Boosting':
         base_model = GradientBoostingClassifier(
             **grad_params,
             random_state=RANDOM_STATE
         )
+    elif best_model_name == 'LightGBM':
+        base_model = lgb.LGBMClassifier(**lgb_params, verbose=-1, n_jobs=-1)
+    elif best_model_name == 'CatBoost':
+        base_model = CatBoostClassifier(**cat_params, verbose=False)
     
-    final_model, best_calibration_method, calibration_results = calibrate_model(
-        base_model, X_train, y_train, X_val, y_val, X_test, y_test
-    )
+    
+    final_model, best_calibration_method, calibration_results = calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test)
     
     print(f"\nФинальная модель: {best_model_name} с {best_calibration_method}")
-    print(f"   ROC-AUC: {calibration_results.loc[calibration_results['Model'] == best_calibration_method, 'ROC-AUC'].values[0]:.3f}")
+    print(f"   PR-AUC: {calibration_results.loc[calibration_results['Model'] == best_calibration_method, 'PR-AUC'].values[0]:.3f}")
     
     # Визуализация финальной модели
     y_proba_final = final_model.predict_proba(X_test)[:, 1]
@@ -388,7 +462,7 @@ def run_pipeline(type_data='balanced_medium'):
     print("\nСОЗДАНИЕ АНСАМБЛЕЙ")
     print("=" * 30)
     
-    # Voting ансамбль
+   # Voting ансамбль
     voting_ensemble = create_voting_ensemble([
         ('rf', RandomForestClassifier(**forest_params, random_state=RANDOM_STATE, n_jobs=-1)),
         ('gb', GradientBoostingClassifier(**grad_params, random_state=RANDOM_STATE))
@@ -409,9 +483,10 @@ def run_pipeline(type_data='balanced_medium'):
     )
     
     # Создаем итоговую таблицу с результатами
+    final_model_name = best_model_name.lower().replace(' ', '_')
     result_models = pd.DataFrame([
         {
-            'model': 'final model',
+            'model': final_model_name,
             'ROC-AUC': roc_auc_score(y_test, y_proba_final),
             'PR-AUC': average_precision_score(y_test, y_proba_final),
             'Accuracy': accuracy_score(y_test, y_pred_final),
@@ -420,17 +495,17 @@ def run_pipeline(type_data='balanced_medium'):
             'Recall': recall_score(y_test, y_pred_final)
         },
         {
-            'model': 'ensemble forest+boosting',
+            'model': 'ensemble_forest_boosting',
             **voting_metrics
         },
         {
-            'model': 'ensemble forest+logistic',
+            'model': 'ensemble_forest_logistic',
             **stacking_metrics
         }
     ])
     
     # Сохраняем модели
-    save_model(final_model, f"../models/final_model_{type_data}.pkl")
+    save_model(final_model, f"../models/final_model_{final_model_name}_{type_data}.pkl")
     save_model(voting_model, f"../models/ensemble_forest_boosting_{type_data}.pkl")
     save_model(stacking_model, f"../models/ensemble_forest_logistic_{type_data}.pkl")
    
@@ -440,6 +515,7 @@ def run_pipeline(type_data='balanced_medium'):
 -----------------------------------------------------------
 Лучшая модель: {best_model_name} с {best_calibration_method}
 ROC-AUC: {roc_auc_score(y_test, y_proba_final):.3f} 
+PR-AUC: {average_precision_score(y_test, y_proba_final):.3f} 
 F1-Score: {f1_score(y_test, y_pred_final):.3f}
 Precision: {precision_score(y_test, y_pred_final):.3f} (точность предсказаний оттока)
 Recall: {recall_score(y_test, y_pred_final):.3f} (находим {recall_score(y_test, y_pred_final):.1%} ушедших)
@@ -455,18 +531,13 @@ Recall: {recall_score(y_test, y_pred_final):.3f} (находим {recall_score(y
 
 # =========== ЗАПУСК ПАЙПЛАЙНА ===========
 if __name__ == "__main__":
+    
     # Можете запускать для разных типов данных
     data_types = ['balanced_medium', 'balanced', 'unbalanced']
     
     for type_data in data_types:
         try:
-            print(f"\n{'='*60}")
-            print(f"ОБРАБОТКА ДАННЫХ: {type_data.upper()}")
-            print('='*60)
             results = run_pipeline(type_data)
             print(f"\nЗавершено для {type_data}")
         except Exception as e:
             print(f"\nОшибка при обработке {type_data}: {e}")
-
-
-
