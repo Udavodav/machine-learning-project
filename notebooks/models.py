@@ -14,6 +14,9 @@ from optuna.samplers import TPESampler
 import lightgbm as lgb
 from catboost import CatBoostClassifier
 
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.over_sampling import SMOTE
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -30,7 +33,7 @@ SCORING = 'average_precision'
 optuna.logging.set_verbosity(optuna.logging.WARNING) 
 
 # =========== ФУНКЦИИ ДЛЯ ОПТИМИЗАЦИИ ===========
-def randForestOpt(trial, X_train, y_train):
+def randForestOpt(trial, X_train, y_train, use_smote=True, sampling_strategy=None):
     """функция для оптимизации RandomForest"""
     params = {
         'n_estimators': trial.suggest_int('n_estimators', 100, 500),
@@ -41,21 +44,26 @@ def randForestOpt(trial, X_train, y_train):
         'bootstrap': True,
         'criterion': trial.suggest_categorical('criterion', ['gini', 'entropy']),
     }
-    
+
+    pipeline_steps = []
+    if use_smote:
+        pipeline_steps.append(('smote', SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)))
+        
     model = RandomForestClassifier(**params, class_weight='balanced', random_state=RANDOM_STATE, n_jobs=-1)
+    pipeline_steps.append(('classifier', model))
     
     cv_scores = cross_val_score(
-        model, 
+        ImbPipeline(pipeline_steps), 
         X_train,
         y_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        cv=StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE),
         scoring=SCORING,
         n_jobs=-1
     )
     
     return cv_scores.mean()
 
-def gradOpt(trial, X_train, y_train):
+def gradOpt(trial, X_train, y_train, use_smote=True, sampling_strategy=None):
     """функция для оптимизации GradientBoosting"""
     params = {
         'n_estimators': trial.suggest_int('n_estimators', 100, 500),
@@ -66,14 +74,19 @@ def gradOpt(trial, X_train, y_train):
         'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2']),
         'subsample': trial.suggest_float('subsample', 0.5, 0.9),
     }
-    
+
+    pipeline_steps = []
+    if use_smote:
+        pipeline_steps.append(('smote', SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)))
+        
     model = GradientBoostingClassifier(**params, random_state=RANDOM_STATE)
+    pipeline_steps.append(('classifier', model))
     
     cv_scores = cross_val_score(
-        model, 
+        ImbPipeline(pipeline_steps), 
         X_train,
         y_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        cv=StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE),
         scoring=SCORING,
         n_jobs=-1
     )
@@ -81,7 +94,7 @@ def gradOpt(trial, X_train, y_train):
     return cv_scores.mean()
 
 
-def lightgbmOpt(trial, X_train, y_train):
+def lightgbmOpt(trial, X_train, y_train, use_smote=True, sampling_strategy=None):
     """функция для оптимизации LightGBM"""
     params = {
         'n_estimators': trial.suggest_int('n_estimators', 100, 500),
@@ -96,23 +109,27 @@ def lightgbmOpt(trial, X_train, y_train):
         'random_state': RANDOM_STATE,
         'n_jobs': 10,
         'verbose': -1,  # отключаем логи
-        'is_unbalance': True  # для дисбаланса
     }
-    
+
+    pipeline_steps = []
+    if use_smote:
+        pipeline_steps.append(('smote', SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)))
+        
     model = lgb.LGBMClassifier(**params)
+    pipeline_steps.append(('classifier', model))
     
     cv_scores = cross_val_score(
-        model, 
+        ImbPipeline(pipeline_steps), 
         X_train,
         y_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        cv=StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE),
         scoring=SCORING,
         n_jobs=10
     )
     
     return cv_scores.mean()
 
-def catboostOpt(trial, X_train, y_train):
+def catboostOpt(trial, X_train, y_train, use_smote=True, sampling_strategy=None):
     """функция для оптимизации CatBoost"""
     params = {
         'iterations': trial.suggest_int('iterations', 100, 500),
@@ -123,16 +140,20 @@ def catboostOpt(trial, X_train, y_train):
         'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 1.0),
         'random_seed': RANDOM_STATE,
         'verbose': False,  # отключаем логи
-        'auto_class_weights': 'Balanced'  # для дисбаланса
     }
-    
+
+    pipeline_steps = []
+    if use_smote:
+        pipeline_steps.append(('smote', SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)))
+        
     model = CatBoostClassifier(**params)
+    pipeline_steps.append(('classifier', model))
     
     cv_scores = cross_val_score(
-        model, 
+        ImbPipeline(pipeline_steps), 
         X_train,
         y_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE),
+        cv=StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE),
         scoring=SCORING,
         n_jobs=1
     )
@@ -141,20 +162,15 @@ def catboostOpt(trial, X_train, y_train):
 
 
 # =========== ФУНКЦИИ ДЛЯ ЗАГРУЗКИ ДАННЫХ ===========
-def load_data(type_data='balanced', train_path=None, test_path=None):
+def load_data():
     """
     Загрузка данных для обучения
     """
-    # Используем переданные пути или пути по умолчанию
-    if train_path is None:
-        train_path = f"../data/processed/train_{type_data}.csv"
-    if test_path is None:
-        test_path = f"../data/processed/test.csv"
-    
-    X_train_bal = pd.read_csv(train_path).drop('Churn', axis=1)
-    y_train_bal = pd.read_csv(train_path)['Churn']
-    X_test_bal = pd.read_csv(test_path).drop('Churn', axis=1)
-    y_test_bal = pd.read_csv(test_path)['Churn']
+   
+    X_train_bal = pd.read_csv("../data/processed/train_unbalanced.csv").drop('Churn', axis=1)
+    y_train_bal = pd.read_csv("../data/processed/train_unbalanced.csv")['Churn']
+    X_test_bal = pd.read_csv("../data/processed/test.csv").drop('Churn', axis=1)
+    y_test_bal = pd.read_csv("../data/processed/test.csv")['Churn']
     
     return X_train_bal, y_train_bal, X_test_bal, y_test_bal
 
@@ -169,19 +185,19 @@ def split_data_for_calibration(X_train_bal, y_train_bal, test_size=0.2, random_s
     return X_train, X_val, y_train, y_val
 
 # =========== ФУНКЦИИ ДЛЯ ОБУЧЕНИЯ И ОЦЕНКИ ===========
-def optimize_hyperparameters(X_train, y_train, optimize_func, n_trials=50):
+def optimize_hyperparameters(X_train, y_train, optimize_func, n_trials=50, use_smote=True, sampling_strategy=None):
     """Оптимизация гиперпараметров для моделей"""
     print("Подбор параметров...")
     study_rf = optuna.create_study(direction='maximize', sampler=TPESampler(seed=RANDOM_STATE))
-    study_rf.optimize(lambda trial: optimize_func(trial, X_train, y_train), 
+    study_rf.optimize(lambda trial: optimize_func(trial, X_train, y_train, use_smote, sampling_strategy), 
                       n_trials=n_trials, show_progress_bar=True)
     
     return study_rf.best_params
 
-def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_strategy=None, scoring=SCORING):
+def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, use_smote=True, sampling_strategy=None):
     """Обучение и оценка нескольких моделей"""
-    if cv_strategy is None:
-        cv_strategy = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+    
+    cv_strategy = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     
     results = []
     
@@ -189,20 +205,32 @@ def train_and_evaluate_models(models_dict, X_train, y_train, X_test, y_test, cv_
         
         print(f"\n{model_name.upper()}")
         print("-" * 40)
+
+        pipeline_steps = []
+        if use_smote:
+            pipeline_steps.append(('smote', SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)))
+        
+        pipeline_steps.append(('classifier', model))
+        pipeline = ImbPipeline(pipeline_steps)
         
         # Кросс-валидация
         print("Кросс-валидация (5-fold stratified)")
         cv_scores = cross_val_score(
-            model, X_train, y_train,
+            pipeline, X_train, y_train,
             cv=cv_strategy,
-            scoring=scoring,
+            scoring=SCORING,
             n_jobs=-1
         )
         print(f"   PR-AUC на каждом фолде: {cv_scores}")
         print(f"   Средний PR-AUC: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
         
         # Обучение модели
-        model.fit(X_train, y_train)
+        if use_smote:
+            smote = SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)
+            X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+            model.fit(X_train_resampled, y_train_resampled)
+        else:
+            model.fit(X_train, y_train)
         
         # Предсказания
         y_pred = model.predict(X_test)
@@ -253,10 +281,15 @@ def print_metrics(metrics):
     print(f"   Accuracy:    {metrics['test_accuracy']:.3f}")
 
 # =========== ФУНКЦИИ ДЛЯ КАЛИБРОВКИ ===========
-def calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test):
+def calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test, use_smote=True, sampling_strategy=None):
     """Калибровка модели разными методами"""
     # Обучаем базовую модель
-    base_model.fit(X_train, y_train)
+    if use_smote:
+        smote = SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)
+        X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+        base_model.fit(X_train_resampled, y_train_resampled)
+    else:
+        base_model.fit(X_train, y_train)
     
     # Platt scaling (SIGMOID CALIBRATION)
     calibrated_model = CalibratedClassifierCV(
@@ -336,10 +369,16 @@ def create_stacking_ensemble(estimators, final_estimator, cv=3):
         n_jobs=-1
     )
 
-def evaluate_ensemble(ensemble, X_train, y_train, X_test, y_test, ensemble_name):
+def evaluate_ensemble(ensemble, X_train, y_train, X_test, y_test, ensemble_name, use_smote=True, sampling_strategy=None):
     """Оценка ансамбля"""
     print(f"Обучение ансамбля {ensemble_name}...")
-    ensemble.fit(X_train, y_train)
+    
+    if use_smote:
+        smote = SMOTE(random_state=RANDOM_STATE, sampling_strategy=sampling_strategy)
+        X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+        ensemble.fit(X_train_resampled, y_train_resampled)
+    else:
+        ensemble.fit(X_train, y_train)
     
     # Предсказания
     ensemble_proba = ensemble.predict_proba(X_test)[:, 1]
@@ -368,19 +407,15 @@ def save_model(model, filepath):
     joblib.dump(model, filepath)
     print(f"Модель сохранена в {filepath}")
 
-def save_results(results_df, filepath):
-    """Сохранение результатов"""
-    results_df.to_csv(filepath, index=False)
-    print(f"Результаты сохранены в {filepath}")
 
 # =========== ОСНОВНОЙ ПАЙПЛАЙН ===========
-def run_pipeline(type_data='balanced_medium'):
+def run_pipeline(type_data='balanced_medium', sampling_strategy=None):
     """Основной пайплайн обучения"""
     print(f"Запуск пайплайна для данных: {type_data}")
     print("=" * 50)
     
     # Загрузка данных
-    X_train_bal, y_train_bal, X_test, y_test = load_data(type_data)
+    X_train_bal, y_train_bal, X_test, y_test = load_data()
     
     print(f"Размеры данных:")
     print(f"  Обучающая (сбалансированная): {X_train_bal.shape}")
@@ -391,31 +426,34 @@ def run_pipeline(type_data='balanced_medium'):
     
     print(f"  Train для обучения: {X_train.shape}")
     print(f"  Val для калибровки: {X_val.shape}")
+
+    use_smote = sampling_strategy is not None
     
     print("\nОптимизация RandomForest...")
-    forest_params = optimize_hyperparameters(X_train_bal, y_train_bal, randForestOpt, 50)
+    forest_params = optimize_hyperparameters(X_train_bal, y_train_bal, randForestOpt, 50, use_smote, sampling_strategy)
     
     print("\nОптимизация GradientBoosting...")
-    grad_params = optimize_hyperparameters(X_train_bal, y_train_bal, gradOpt, 50)
+    grad_params = optimize_hyperparameters(X_train_bal, y_train_bal, gradOpt, 50, use_smote, sampling_strategy)
     
     print("\nОптимизация LightGBM...")
-    lgb_params = optimize_hyperparameters(X_train_bal, y_train_bal, lightgbmOpt, 30)
+    lgb_params = optimize_hyperparameters(X_train_bal, y_train_bal, lightgbmOpt, 30, use_smote, sampling_strategy)
     
     print("\nОптимизация CatBoost...")
-    cat_params = optimize_hyperparameters(X_train_bal, y_train_bal, catboostOpt, 15)
+    cat_params = optimize_hyperparameters(X_train_bal, y_train_bal, catboostOpt, 15, use_smote, sampling_strategy)
     
     models = {
         'Random Forest': RandomForestClassifier(
             **forest_params,
+            class_weight= 'balanced' if use_smote else None,
             random_state=RANDOM_STATE,
             n_jobs=-1
         ),
         'Gradient Boosting': GradientBoostingClassifier(**grad_params, random_state=RANDOM_STATE),
-        'LightGBM': lgb.LGBMClassifier(**lgb_params, verbose=-1, n_jobs=-1),
-        'CatBoost': CatBoostClassifier(**cat_params, verbose=False)
+        'LightGBM': lgb.LGBMClassifier(**lgb_params, verbose=-1, n_jobs=-1, class_weight='balanced' if use_smote else None),
+        'CatBoost': CatBoostClassifier(**cat_params, verbose=False, auto_class_weights='Balanced' if use_smote else None)
     }
     
-    results_df, trained_models = train_and_evaluate_models(models, X_train, y_train, X_test, y_test)
+    results_df, trained_models = train_and_evaluate_models(models, X_train, y_train, X_test, y_test, use_smote, sampling_strategy)
     
     # Выбор лучшей модели
     best_model_info = results_df.loc[results_df['test_pr_auc'].idxmax()]
@@ -432,6 +470,7 @@ def run_pipeline(type_data='balanced_medium'):
     if best_model_name == 'Random Forest':
         base_model = RandomForestClassifier(
             **forest_params,
+            class_weight='balanced' if use_smote else None, 
             random_state=RANDOM_STATE,
             n_jobs=-1
         )
@@ -441,12 +480,12 @@ def run_pipeline(type_data='balanced_medium'):
             random_state=RANDOM_STATE
         )
     elif best_model_name == 'LightGBM':
-        base_model = lgb.LGBMClassifier(**lgb_params, verbose=-1, n_jobs=-1)
+        base_model = lgb.LGBMClassifier(**lgb_params, n_jobs=-1, class_weight='balanced' if use_smote else None,)
     elif best_model_name == 'CatBoost':
-        base_model = CatBoostClassifier(**cat_params, verbose=False)
+        base_model = CatBoostClassifier(**cat_params, auto_class_weights='Balanced' if use_smote else None)
     
     
-    final_model, best_calibration_method, calibration_results = calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test)
+    final_model, best_calibration_method, calibration_results = calibrate_model(base_model, X_train, y_train, X_val, y_val, X_test, y_test, use_smote, sampling_strategy)
     
     print(f"\nФинальная модель: {best_model_name} с {best_calibration_method}")
     print(f"   PR-AUC: {calibration_results.loc[calibration_results['Model'] == best_calibration_method, 'PR-AUC'].values[0]:.3f}")
@@ -464,22 +503,22 @@ def run_pipeline(type_data='balanced_medium'):
     
    # Voting ансамбль
     voting_ensemble = create_voting_ensemble([
-        ('rf', RandomForestClassifier(**forest_params, random_state=RANDOM_STATE, n_jobs=-1)),
+        ('rf', RandomForestClassifier(**forest_params, random_state=RANDOM_STATE, n_jobs=-1, class_weight='balanced' if use_smote else None)),
         ('gb', GradientBoostingClassifier(**grad_params, random_state=RANDOM_STATE))
     ])
     
     voting_model, voting_metrics = evaluate_ensemble(
-        voting_ensemble, X_train, y_train, X_test, y_test, 'ensemble_forest_boosting'
+        voting_ensemble, X_train, y_train, X_test, y_test, 'ensemble_forest_boosting', use_smote, sampling_strategy
     )
     
     # Stacking ансамбль
     stacking_ensemble = create_stacking_ensemble([
         ('lr', LogisticRegression(max_iter=100, random_state=RANDOM_STATE)),
-        ('rf', RandomForestClassifier(**forest_params, random_state=RANDOM_STATE, n_jobs=-1))
+        ('rf', RandomForestClassifier(**forest_params, random_state=RANDOM_STATE, n_jobs=-1, class_weight='balanced' if use_smote else None))
     ], LogisticRegression(max_iter=100, random_state=RANDOM_STATE))
     
     stacking_model, stacking_metrics = evaluate_ensemble(
-        stacking_ensemble, X_train, y_train, X_test, y_test, 'ensemble_forest_logistic'
+        stacking_ensemble, X_train, y_train, X_test, y_test, 'ensemble_forest_logistic', use_smote, sampling_strategy
     )
     
     # Создаем итоговую таблицу с результатами
@@ -533,11 +572,15 @@ Recall: {recall_score(y_test, y_pred_final):.3f} (находим {recall_score(y
 if __name__ == "__main__":
     
     # Можете запускать для разных типов данных
-    data_types = ['balanced_medium', 'balanced', 'unbalanced']
+    data_types = [
+        ('unbalanced', None),           # Без балансировки
+        ('balanced_medium', 0.7),       # 70% minority class (средняя балансировка)
+        ('balanced', 1.0),              # 100% (полная балансировка 50/50)
+    ]
     
-    for type_data in data_types:
+    for type_data, sampling_strategy in data_types:
         try:
-            results = run_pipeline(type_data)
+            run_pipeline(type_data, sampling_strategy)
             print(f"\nЗавершено для {type_data}")
         except Exception as e:
             print(f"\nОшибка при обработке {type_data}: {e}")
