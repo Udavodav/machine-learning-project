@@ -78,17 +78,36 @@ cat_cols = ['MultipleLines', 'InternetService', 'OnlineSecurity',
             'OnlineBackup', 'DeviceProtection', 'TechSupport',
             'StreamingTV', 'StreamingMovies', 'Contract', 'PaymentMethod']
 
-ohe = OneHotEncoder(sparse_output=False, drop='first')
-ohe.fit(df[cat_cols])
-encoded_array = ohe.transform(df[cat_cols])
+# Разделение на признаки и целевую переменную
+X = df.drop('Churn', axis=1)
+y = df['Churn']
 
-# Создаем DataFrame с правильными именами
+# Разделение на тренировочную и тестовую выборки
+# Разделение делается чтобы сбалансировать обучающую выборку и не трогать тестовые данные
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2,stratify=y,random_state=42)
+
+print("\nРаспределение классов:")
+print(f"Train: класс 0 - {(y_train == 0).sum()}, класс 1 - {(y_train == 1).sum()}")
+print(f"Test:  класс 0 - {(y_test == 0).sum()}, класс 1 - {(y_test == 1).sum()}")
+
+ohe = OneHotEncoder(sparse_output=False, drop='first', handle_unknown='ignore')
+ohe.fit(X_train[cat_cols]) 
+
+X_train_encoded = ohe.transform(X_train[cat_cols])
+X_test_encoded = ohe.transform(X_test[cat_cols])
+
 feature_names = ohe.get_feature_names_out(cat_cols)
-df_encoded = pd.DataFrame(encoded_array, columns=feature_names, index=df.index)
+X_train_encoded_df = pd.DataFrame(X_train_encoded, columns=feature_names, index=X_train.index)
+X_test_encoded_df = pd.DataFrame(X_test_encoded, columns=feature_names, index=X_test.index)
 
-# Удаляем старые колонки и добавляем новые
-df = df.drop(cat_cols, axis=1)
-df = pd.concat([df, df_encoded], axis=1)
+# Удаляем старые категориальные колонки и объединяем с закодированными
+X_train = X_train.drop(cat_cols, axis=1)
+X_test = X_test.drop(cat_cols, axis=1)
+
+X_train = pd.concat([X_train, X_train_encoded_df], axis=1)
+X_test = pd.concat([X_test, X_test_encoded_df], axis=1)
+
 
 # Сохраняем encoder для тестовых данных
 os.makedirs('encoders', exist_ok=True)
@@ -98,62 +117,17 @@ joblib.dump(ohe, 'encoders/onehot_encoder.pkl')
 # Нормализация числовых признаков
 numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges', 'CLV', 'RiskScore', 'TotalServices', 'ServiceDensity']
 scaler = StandardScaler()
-df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+# df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
 
-# Разделение на признаки и целевую переменную
-X = df.drop('Churn', axis=1)
-y = df['Churn']
-
-# Проверяем текущее распределение классов
-print("\n Распределение классов в полном датасете:")
-class_distribution = y.value_counts(normalize=True)
-print(f"   Класс 0 (не ушли): {class_distribution[0]:.2%} ({y.value_counts()[0]} клиентов)")
-print(f"   Класс 1 (ушли): {class_distribution[1]:.2%} ({y.value_counts()[1]} клиентов)")
-print(f"   Соотношение (1/0): {class_distribution[1]/class_distribution[0]:.2f}")
-
-# Разделение на тренировочную и тестовую выборки
-# Разделение делается чтобы сбалансировать обучающую выборку и не трогать тестовые данные
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2,stratify=y,random_state=42)
-
-# Анализ дисбаланса в тренировочной выборке
-print("\nАнализ дисбаланса в тренировочной выборке:")
-print("\nДо балансировки:")
-print(f"   Класс 0: {(y_train == 0).sum()} клиентов")
-print(f"   Класс 1: {(y_train == 1).sum()} клиентов")
-print(f"   Соотношение (1/0): {(y_train == 1).sum() / (y_train == 0).sum():.2f}")
-
-# Балансировка тренировочной выборки с помощью SMOTE (50/50)
-smote = SMOTE(random_state=42)
-X_train_balanced, y_train_balanced = smote.fit_resample(X_train, y_train)
-
-# Балансировка тренировочной выборки с помощью SMOTE (0.7)
-smote = SMOTE(sampling_strategy=0.7, random_state=42)
-X_train_balanced_medium, y_train_balanced_medium = smote.fit_resample(X_train, y_train)
-
-print("\nПосле SMOTE  (medium):")
-print(f"   Класс 0: {(y_train_balanced_medium == 0).sum()} клиентов")
-print(f"   Класс 1: {(y_train_balanced_medium == 1).sum()} клиентов")
-print(f"   Соотношение (1/0): {(y_train_balanced_medium == 1).sum() / (y_train_balanced_medium == 0).sum():.2f}")
-print(f"   Добавлено искусственных примеров класса: {(y_train_balanced_medium == 1).sum() - (y_train == 1).sum()}")
-
-print("\nПосле SMOTE:")
-print(f"   Класс 0: {(y_train_balanced == 0).sum()} клиентов")
-print(f"   Класс 1: {(y_train_balanced == 1).sum()} клиентов")
-print(f"   Соотношение (1/0): {(y_train_balanced == 1).sum() / (y_train_balanced == 0).sum():.2f}")
-print(f"   Добавлено искусственных примеров класса: {(y_train_balanced == 1).sum() - (y_train == 1).sum()}")
+X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
 
 # Сохраняем обработанные данные
 os.makedirs(PROCESSED_DIR, exist_ok=True)
-#df.to_csv(PROCESSED_PATH, index=False)
 
 # Сохраняем несбалансированные тренировочные данные
 pd.concat([X_train, y_train], axis=1).to_csv(f'{PROCESSED_DIR}/train_unbalanced.csv', index=False)
-
-# Сохраняем сбалансированные тренировочные данные
-pd.concat([X_train_balanced, y_train_balanced], axis=1).to_csv(f'{PROCESSED_DIR}/train_balanced.csv', index=False)
-pd.concat([X_train_balanced_medium, y_train_balanced_medium], axis=1).to_csv(f'{PROCESSED_DIR}/train_balanced_medium.csv', index=False)
 
 # Сохраняем тестовые данные (НЕ балансируем!)
 pd.concat([X_test, y_test], axis=1).to_csv(f'{PROCESSED_DIR}/test.csv', index=False)
