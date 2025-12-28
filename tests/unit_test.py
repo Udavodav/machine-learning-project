@@ -70,7 +70,7 @@ def test_calculate_metrics_function():
     # Проверяем наличие всех ключей
     required_keys = ['model', 'test_roc_auc', 'test_pr_auc', 'test_f1', 
                     'test_precision', 'test_recall', 'test_accuracy',
-                    'cv_roc_auc_mean', 'cv_roc_auc_std']
+                    'cv_pr_auc_mean', 'cv_pr_auc_std']
     
     for key in required_keys:
         assert key in metrics
@@ -78,7 +78,7 @@ def test_calculate_metrics_function():
     # Проверяем типы значений
     assert isinstance(metrics['test_roc_auc'], float)
     assert isinstance(metrics['test_f1'], float)
-    assert isinstance(metrics['cv_roc_auc_mean'], float)
+    assert isinstance(metrics['cv_pr_auc_mean'], float)
     
     # Проверяем корректные диапазоны
     assert 0 <= metrics['test_roc_auc'] <= 1
